@@ -210,10 +210,29 @@ if validate_json "$VERSION_RESPONSE"; then
   CPU_COUNT=$(echo "$VERSION_RESPONSE" | jq -r '."ctrl-cpu".oper["number-of-cpu"] // 0' 2>/dev/null || echo 0)
   DEVICE_HOSTNAME=$(echo "$VERSION_RESPONSE" | jq -r 'try(.version.oper.hostname // .version.oper["hostname"] // .hostname // empty) catch empty' 2>/dev/null || true)
   DEVICE_SERIAL=$(echo "$VERSION_RESPONSE" | jq -r 'try(.version.oper["serial-number"] // .["serial-number"] // empty) catch empty' 2>/dev/null || true)
-  info "Version info retrieved"
+  DETECTED_HARDWARE=$(echo "$VERSION_RESPONSE" | jq -r 'try(.version.oper["hw-platform"] // .version.oper.hw_platform // .["hw-platform"] // .hw_platform // empty) catch empty' 2>/dev/null || true)
+  DETECTED_VERSION_RAW=$(echo "$VERSION_RESPONSE" | jq -r 'try(.version.oper["sw-version"] // empty) catch empty' 2>/dev/null || true)
+
+  DETECTED_VERSION=$(echo "${DETECTED_VERSION_RAW}" | cut -d',' -f1 | tr -d '[:space:]')
+  info "Version info retrieved ${DETECTED_VERSION_RAW} -> ${DETECTED_VERSION}"
+  info "Hardware info retrieved ${DETECTED_HARDWARE}"
   info "Derived cpu_count from response: ${CPU_COUNT}"
   info "Hostname: ${DEVICE_HOSTNAME}"
   info "Serial Number: ${DEVICE_SERIAL}"
+
+  if [[ -n "${DETECTED_HARDWARE}" ]] && [[ "${DETECTED_HARDWARE}" == *"vThunder"* ]]; then
+    info "Detected hardware is vThunder; skipping 4th-generation platform validation."
+  elif [[ -n "${DETECTED_HARDWARE}" ]] && [[ "${DETECTED_HARDWARE}" =~ ^[A-Za-z]+[0-9]{4}[A-Za-z]?$ ]]; then
+    HARDWARE_GEN="${DETECTED_HARDWARE:$((${#DETECTED_HARDWARE}-3)):1}"
+    info "Detected hardware generation ${HARDWARE_GEN} for platform ${DETECTED_HARDWARE}"
+    if [[ "${HARDWARE_GEN}" == "4" ]]; then
+      fail "Detected 4th generation hardware (${DETECTED_HARDWARE}); the last supported version is 6.0.7."
+    fi
+  fi
+
+  if [[ -n "${DETECTED_VERSION}" && "${DETECTED_VERSION}" != "6.0.7" ]]; then
+    fail "Detected software version ${DETECTED_VERSION}; expected 6.0.7, please upgrade to 6.0.7 before proceeding with this upgrade."
+  fi
   pass "Version info request completed"
 else
   echo "$VERSION_RESPONSE"
@@ -361,11 +380,12 @@ print_section "9) Shared Poll Mode"
 
 SHARED_POLL_RESPONSE=$(request_text "POST" "/clideploy" "text/plain" "sh system shared-poll-mode" "$AUTHKEY")
 
-#echo "$SHARED_POLL_RESPONSE"
+echo "$SHARED_POLL_RESPONSE"
 
 SECOND_LINE=$(echo "$SHARED_POLL_RESPONSE" | awk 'NF{count++; if (count == 2) print;}' || true)
 NONEMPTY_LINES=$(echo "$SHARED_POLL_RESPONSE" | awk 'NF{count++} END{print count+0}')
 
+echo "end of shared poll mode response.  next logging"
 if (( NONEMPTY_LINES < 2 )); then
   fail "Shared Poll Mode response must contain at least 2 non-empty lines"
 else
