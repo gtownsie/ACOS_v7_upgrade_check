@@ -230,8 +230,8 @@ if validate_json "$VERSION_RESPONSE"; then
     fi
   fi
 
-  if [[ -n "${DETECTED_VERSION}" && "${DETECTED_VERSION}" != "6.0.7" ]]; then
-    fail "Detected software version ${DETECTED_VERSION}; expected 6.0.7, please upgrade to 6.0.7 before proceeding with this upgrade."
+  if [[ -n "${DETECTED_VERSION}" && ! "${DETECTED_VERSION}" =~ ^6\.([1-9]|0\.([7-9]|[0-9]{2,})) ]]; then
+    fail "Detected software version ${DETECTED_VERSION}; expected 6.0.7 or later (within 6.x), please upgrade before proceeding with this upgrade."
   fi
   pass "Version info request completed"
 else
